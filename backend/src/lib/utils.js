@@ -14,3 +14,13 @@ export const generateToken = (userId, res) => {
 
   return token;
 };
+
+export const generateTokenForLocalStorage = (userId) => {
+  return jwt.sign({ userId }, process.env.JWT_SECRET, {
+    expiresIn: "7d",
+  });
+};
+
+export const verifyToken = (token) => {
+  return jwt.verify(token, process.env.JWT_SECRET);
+};

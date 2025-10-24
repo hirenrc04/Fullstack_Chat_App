@@ -1,9 +1,10 @@
+import { Eye, EyeOff, Loader2, Lock, LockOpen, Mail, MessageSquare, User } from 'lucide-react';
 import React, { useState } from 'react';
-import { useAuthStore } from '../store/useAuthStore';
-import AuthImagePattern from '../components/AuthImagePattern.jsx';
-import { Link } from 'react-router-dom';
 import toast from "react-hot-toast";
-import { Eye, EyeOff, Mail, MessageSquare, User, Lock, LockOpen, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import AuthImagePattern from '../components/AuthImagePattern.jsx';
+import GoogleOAuth from '../components/GoogleOAuth';
+import { useAuthStore } from '../store/useAuthStore';
 
 
 export default function SignUpPage() {
@@ -140,6 +141,12 @@ export default function SignUpPage() {
               )}
             </button>
         </form>
+
+        {/* Divider */}
+        <div className="divider">OR</div>
+
+        {/* Google OAuth */}
+        <GoogleOAuth />
 
         <div className='text-center p-5'>
           <p className='text-base-content/40'>

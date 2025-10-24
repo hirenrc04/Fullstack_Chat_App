@@ -16,12 +16,23 @@ export const useAuthStore = create((set, get) => ({
 
   checkAuth: async () => {
     try {
-      const res = await axiosInstance.get("/auth/check");
+      const token = localStorage.getItem('token');
+      if (!token) {
+        set({ authUser: null, isCheckingAuth: false });
+        return;
+      }
+
+      const res = await axiosInstance.get("/auth/current-user", {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
 
       set({ authUser: res.data });
       get().connectSocket();
     } catch (error) {
       console.log("Error in checkAuth:", error);
+      localStorage.removeItem('token');
       set({ authUser: null });
     } finally {
       set({ isCheckingAuth: false });
@@ -42,6 +53,21 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
+  googleLogin: async (credential) => {
+    set({ isLoggingIn: true });
+    try {
+      const res = await axiosInstance.post("/auth/google/callback", { credential });
+      localStorage.setItem('token', res.data.token);
+      set({ authUser: res.data.user });
+      toast.success("Logged in successfully");
+      get().connectSocket();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Google login failed");
+    } finally {
+      set({ isLoggingIn: false });
+    }
+  },
+
   login: async (data) => {
     set({ isLoggingIn: true });
     try {
@@ -59,12 +85,12 @@ export const useAuthStore = create((set, get) => ({
 
   logout: async () => {
     try {
-      await axiosInstance.post("/auth/logout");
+      localStorage.removeItem('token');
       set({ authUser: null });
       toast.success("Logged out successfully");
       get().disconnectSocket();
     } catch (error) {
-      toast.error(error.response.data.message);
+      toast.error(error.response?.data?.message || "Logout failed");
     }
   },
 

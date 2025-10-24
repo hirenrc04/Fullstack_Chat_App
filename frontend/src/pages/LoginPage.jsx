@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { useAuthStore } from "../store/useAuthStore";
-import AuthImagePattern from "../components/AuthImagePattern";
-import { Link } from "react-router-dom";
 import { Eye, EyeOff, Loader2, Lock, Mail, MessageSquare } from "lucide-react";
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import AuthImagePattern from "../components/AuthImagePattern";
+import GoogleOAuth from "../components/GoogleOAuth";
+import { useAuthStore } from "../store/useAuthStore";
 
 const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -96,6 +97,12 @@ const LoginPage = () => {
               )}
             </button>
           </form>
+
+          {/* Divider */}
+          <div className="divider">OR</div>
+
+          {/* Google OAuth */}
+          <GoogleOAuth />
 
           <div className="text-center">
             <p className="text-base-content/60">

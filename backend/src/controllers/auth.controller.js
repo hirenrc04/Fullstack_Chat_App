@@ -1,7 +1,8 @@
-import { generateToken } from "../lib/utils.js";
+import { generateToken, generateTokenForLocalStorage } from "../lib/utils.js";
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import cloudinary from "../lib/cloudinary.js";
+import { OAuth2Client } from "google-auth-library";
 
 export const signup = async (req, res) => {
   const { fullName, email, password } = req.body;
@@ -113,6 +114,77 @@ export const checkAuth = (req, res) => {
     res.status(200).json(req.user);
   } catch (error) {
     console.log("Error in checkAuth controller", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const googleCallback = async (req, res) => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential) {
+      return res.status(400).json({ message: "Google credential is required" });
+    }
+
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture } = payload;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email not provided by Google" });
+    }
+
+    // Check if user already exists
+    let user = await User.findOne({ 
+      $or: [
+        { email },
+        { googleId }
+      ]
+    });
+
+    if (user) {
+      // Update existing user with Google info if they don't have it
+      if (!user.googleId) {
+        user.googleId = googleId;
+        user.authProvider = 'google';
+        if (!user.profilePic && picture) {
+          user.profilePic = picture;
+        }
+        await user.save();
+      }
+    } else {
+      // Create new user
+      user = new User({
+        email,
+        fullName: name,
+        googleId,
+        profilePic: picture || "",
+        authProvider: 'google',
+      });
+      await user.save();
+    }
+
+    // Generate JWT token for localStorage
+    const token = generateTokenForLocalStorage(user._id);
+
+    res.status(200).json({
+      token,
+      user: {
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        profilePic: user.profilePic,
+        authProvider: user.authProvider,
+      },
+    });
+  } catch (error) {
+    console.log("Error in googleCallback controller", error.message);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
