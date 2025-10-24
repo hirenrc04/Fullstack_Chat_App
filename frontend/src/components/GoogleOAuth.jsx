@@ -1,10 +1,19 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 
 const GoogleOAuth = () => {
   const { googleLogin, isLoggingIn } = useAuthStore();
+  const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    
+    if (!clientId) {
+      setError("Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your environment variables.");
+      return;
+    }
+
     // Load Google OAuth script
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
@@ -14,11 +23,21 @@ const GoogleOAuth = () => {
 
     script.onload = () => {
       if (window.google) {
-        window.google.accounts.id.initialize({
-          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+        try {
+          window.google.accounts.id.initialize({
+          client_id: clientId,
           callback: handleCredentialResponse,
         });
+        setIsGoogleLoaded(true);
+        } catch (err) {
+          console.error("Error initializing Google OAuth:", err);
+          setError("Failed to initialize Google OAuth");
+        }
       }
+    };
+
+    script.onerror = () => {
+      setError("Failed to load Google OAuth script");
     };
 
     return () => {
@@ -36,22 +55,38 @@ const GoogleOAuth = () => {
   };
 
   const handleGoogleSignIn = () => {
-    if (window.google) {
+    if (window.google && isGoogleLoaded) {
       window.google.accounts.id.prompt();
     }
   };
+
+  if (error) {
+    return (
+      <div className="alert alert-error">
+        <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>{error}</span>
+      </div>
+    );
+  }
 
   return (
     <button
       type="button"
       onClick={handleGoogleSignIn}
-      disabled={isLoggingIn}
+      disabled={isLoggingIn || !isGoogleLoaded}
       className="btn btn-outline w-full flex items-center justify-center gap-3"
     >
       {isLoggingIn ? (
         <>
           <div className="loading loading-spinner loading-sm"></div>
           Signing in...
+        </>
+      ) : !isGoogleLoaded ? (
+        <>
+          <div className="loading loading-spinner loading-sm"></div>
+          Loading Google...
         </>
       ) : (
         <>
