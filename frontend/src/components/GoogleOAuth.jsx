@@ -5,19 +5,18 @@ const GoogleOAuth = () => {
   const { googleLogin, isLoggingIn } = useAuthStore();
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
   const [error, setError] = useState(null);
-  const autoPromptedRef = useRef(false);
+  const lastClick = useRef(0);
 
   useEffect(() => {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    
+
     if (!clientId) {
-      setError("Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your environment variables.");
+      setError("Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env.");
       return;
     }
 
-    // Load Google OAuth script
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
     script.async = true;
     script.defer = true;
     document.body.appendChild(script);
@@ -28,63 +27,21 @@ const GoogleOAuth = () => {
           window.google.accounts.id.initialize({
             client_id: clientId,
             callback: handleCredentialResponse,
+            ux_mode: "popup", // ✅ prevents auto FedCM prompt
           });
           setIsGoogleLoaded(true);
-          // Auto prompt One Tap as soon as initialized (no redirect/popup)
-          try {
-            if (!autoPromptedRef.current) {
-              autoPromptedRef.current = true;
-              window.google.accounts.id.prompt(
-                (notification) => {
-                  // Handle not displayed or error reasons
-                  if (notification) {
-                    if (typeof notification.isNotDisplayed === 'function' && notification.isNotDisplayed()) {
-                      const reason = notification.getNotDisplayedReason && notification.getNotDisplayedReason();
-                      if (
-                        reason === 'suppressed_by_user' ||
-                        reason === 'unknown_reason' ||
-                        reason === 'browser_not_supported' ||
-                        reason === 'opt_out_or_no_session' ||
-                        reason === 'secure_http_required' ||
-                        reason === 'another_window_opened' ||
-                        reason === 'user_not_signed_in' ||
-                        reason === 'error' // fallback
-                      ) {
-                        setError(
-                          'Google sign-in popup was blocked or disabled by your browser.\n' +
-                          'Please click the icon to the left of the address bar and enable "Third-party sign-in" or go to your browser site settings for this site to allow Google sign-in.'
-                        );
-                      }
-                    }
-                  }
-                },
-                {
-                  use_fedcm_for_prompt: true,
-                  itp_support: true,
-                }
-              );
-            }
-          } catch (e) {
-            // Check for AbortError in the error message (browser block)
-            if (e && e.name === 'AbortError') {
-              setError(
-                'Google sign-in was blocked by your browser (AbortError). You may have previously denied sign-in, or your browser/site settings are blocking third-party sign-in. Try allowing sign-in via the bar next to the URL or check site settings.'
-              );
-            }
-          }
         } catch (err) {
-          console.error('Error initializing Google OAuth:', err);
-          setError('Failed to initialize Google OAuth');
+          console.error("Error initializing Google OAuth:", err);
+          setError("Failed to initialize Google OAuth.");
         }
       }
     };
 
     script.onerror = () => {
-      setError("Failed to load Google OAuth script");
+      setError("Failed to load Google OAuth script.");
     };
 
     return () => {
-      // Cleanup script on unmount
       if (document.body.contains(script)) {
         document.body.removeChild(script);
       }
@@ -98,48 +55,27 @@ const GoogleOAuth = () => {
   };
 
   const handleGoogleSignIn = () => {
-    // Clear error every time the user retries
     setError(null);
+    const now = Date.now();
+    if (now - lastClick.current < 2000) return; // prevent spam clicks
+    lastClick.current = now;
+
     if (window.google && isGoogleLoaded) {
-      window.google.accounts.id.prompt((notification) => {
-        // Handle not displayed reasons on manual click attempt too
-        if (notification) {
-          if (typeof notification.isNotDisplayed === 'function' && notification.isNotDisplayed()) {
-            const reason = notification.getNotDisplayedReason && notification.getNotDisplayedReason();
-            if (
-              reason === 'suppressed_by_user' ||
-              reason === 'unknown_reason' ||
-              reason === 'browser_not_supported' ||
-              reason === 'opt_out_or_no_session' ||
-              reason === 'secure_http_required' ||
-              reason === 'another_window_opened' ||
-              reason === 'user_not_signed_in' ||
-              reason === 'error' // fallback
-            ) {
-              setError(
-                'Google sign-in popup was blocked or disabled by your browser.\n' +
-                'Please click the icon to the left of the address bar and enable "Third-party sign-in" or go to your browser site settings for this site to allow Google sign-in.'
-              );
-            }
+      try {
+        window.google.accounts.id.prompt((notification) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            console.warn("FedCM blocked:", notification.getNotDisplayedReason());
+            // ✅ Fallback to backend redirect if FedCM blocked
+            window.location.href = "https://natterly.onrender.com/auth/google";
           }
-        }
-      }, {
-        use_fedcm_for_prompt: true,
-        itp_support: true,
-      });
+        });
+      } catch (err) {
+        console.error("FedCM Error:", err);
+        // ✅ Fallback again if Chrome blocked FedCM
+        window.location.href = "https://natterly.onrender.com/auth/google";
+      }
     }
   };
-
-  if (error) {
-    return (
-      <div className="alert alert-error">
-        <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span>{error}</span>
-      </div>
-    );
-  }
 
   return (
     <button
