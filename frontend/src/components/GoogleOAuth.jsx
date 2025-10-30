@@ -26,26 +26,55 @@ const GoogleOAuth = () => {
       if (window.google) {
         try {
           window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: handleCredentialResponse,
-        });
-        setIsGoogleLoaded(true);
-        // Auto prompt One Tap as soon as initialized (no redirect/popup)
-        try {
-          if (!autoPromptedRef.current) {
-            autoPromptedRef.current = true;
-            window.google.accounts.id.prompt((notification) => {
-              // If One Tap is not displayed or skipped, users can click the button below
-              // We intentionally do not redirect/open popup; One Tap will overlay the page if eligible
-            }, {
-              use_fedcm_for_prompt: true,
-              itp_support: true,
-            });
+            client_id: clientId,
+            callback: handleCredentialResponse,
+          });
+          setIsGoogleLoaded(true);
+          // Auto prompt One Tap as soon as initialized (no redirect/popup)
+          try {
+            if (!autoPromptedRef.current) {
+              autoPromptedRef.current = true;
+              window.google.accounts.id.prompt(
+                (notification) => {
+                  // Handle not displayed or error reasons
+                  if (notification) {
+                    if (typeof notification.isNotDisplayed === 'function' && notification.isNotDisplayed()) {
+                      const reason = notification.getNotDisplayedReason && notification.getNotDisplayedReason();
+                      if (
+                        reason === 'suppressed_by_user' ||
+                        reason === 'unknown_reason' ||
+                        reason === 'browser_not_supported' ||
+                        reason === 'opt_out_or_no_session' ||
+                        reason === 'secure_http_required' ||
+                        reason === 'another_window_opened' ||
+                        reason === 'user_not_signed_in' ||
+                        reason === 'error' // fallback
+                      ) {
+                        setError(
+                          'Google sign-in popup was blocked or disabled by your browser.\n' +
+                          'Please click the icon to the left of the address bar and enable "Third-party sign-in" or go to your browser site settings for this site to allow Google sign-in.'
+                        );
+                      }
+                    }
+                  }
+                },
+                {
+                  use_fedcm_for_prompt: true,
+                  itp_support: true,
+                }
+              );
+            }
+          } catch (e) {
+            // Check for AbortError in the error message (browser block)
+            if (e && e.name === 'AbortError') {
+              setError(
+                'Google sign-in was blocked by your browser (AbortError). You may have previously denied sign-in, or your browser/site settings are blocking third-party sign-in. Try allowing sign-in via the bar next to the URL or check site settings.'
+              );
+            }
           }
-        } catch (_) {}
         } catch (err) {
-          console.error("Error initializing Google OAuth:", err);
-          setError("Failed to initialize Google OAuth");
+          console.error('Error initializing Google OAuth:', err);
+          setError('Failed to initialize Google OAuth');
         }
       }
     };
@@ -69,8 +98,32 @@ const GoogleOAuth = () => {
   };
 
   const handleGoogleSignIn = () => {
+    // Clear error every time the user retries
+    setError(null);
     if (window.google && isGoogleLoaded) {
-      window.google.accounts.id.prompt(undefined, {
+      window.google.accounts.id.prompt((notification) => {
+        // Handle not displayed reasons on manual click attempt too
+        if (notification) {
+          if (typeof notification.isNotDisplayed === 'function' && notification.isNotDisplayed()) {
+            const reason = notification.getNotDisplayedReason && notification.getNotDisplayedReason();
+            if (
+              reason === 'suppressed_by_user' ||
+              reason === 'unknown_reason' ||
+              reason === 'browser_not_supported' ||
+              reason === 'opt_out_or_no_session' ||
+              reason === 'secure_http_required' ||
+              reason === 'another_window_opened' ||
+              reason === 'user_not_signed_in' ||
+              reason === 'error' // fallback
+            ) {
+              setError(
+                'Google sign-in popup was blocked or disabled by your browser.\n' +
+                'Please click the icon to the left of the address bar and enable "Third-party sign-in" or go to your browser site settings for this site to allow Google sign-in.'
+              );
+            }
+          }
+        }
+      }, {
         use_fedcm_for_prompt: true,
         itp_support: true,
       });
