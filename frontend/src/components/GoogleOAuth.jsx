@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 
 const GoogleOAuth = () => {
   const { googleLogin, isLoggingIn } = useAuthStore();
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
   const [error, setError] = useState(null);
+  const autoPromptedRef = useRef(false);
 
   useEffect(() => {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -29,6 +30,19 @@ const GoogleOAuth = () => {
           callback: handleCredentialResponse,
         });
         setIsGoogleLoaded(true);
+        // Auto prompt One Tap as soon as initialized (no redirect/popup)
+        try {
+          if (!autoPromptedRef.current) {
+            autoPromptedRef.current = true;
+            window.google.accounts.id.prompt((notification) => {
+              // If One Tap is not displayed or skipped, users can click the button below
+              // We intentionally do not redirect/open popup; One Tap will overlay the page if eligible
+            }, {
+              use_fedcm_for_prompt: true,
+              itp_support: true,
+            });
+          }
+        } catch (_) {}
         } catch (err) {
           console.error("Error initializing Google OAuth:", err);
           setError("Failed to initialize Google OAuth");
@@ -56,7 +70,10 @@ const GoogleOAuth = () => {
 
   const handleGoogleSignIn = () => {
     if (window.google && isGoogleLoaded) {
-      window.google.accounts.id.prompt();
+      window.google.accounts.id.prompt(undefined, {
+        use_fedcm_for_prompt: true,
+        itp_support: true,
+      });
     }
   };
 
