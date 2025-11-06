@@ -6,74 +6,107 @@ const GoogleOAuth = () => {
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
   const [error, setError] = useState(null);
   const lastClick = useRef(0);
+  const initializedRef = useRef(false);
 
+  // Keep last error for debugging
+  const [debug, setDebug] = useState("");
+
+  function logAndSetError(msg, err) {
+    console.error(msg, err);
+    setDebug(`${msg}: ${err?.message || err}`);
+    setError(msg);
+  }
+
+  // Effect: load script and initialize once
   useEffect(() => {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-
     if (!clientId) {
-      setError("Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env.");
+      logAndSetError("Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env.");
       return;
     }
-
     const script = document.createElement("script");
     script.src = "https://accounts.google.com/gsi/client";
     script.async = true;
     script.defer = true;
     document.body.appendChild(script);
-
     script.onload = () => {
-      if (window.google) {
+      if (window.google && !initializedRef.current) {
         try {
           window.google.accounts.id.initialize({
             client_id: clientId,
             callback: handleCredentialResponse,
-            ux_mode: "popup", // ✅ prevents auto FedCM prompt
+            ux_mode: "popup",
+            cancel_on_tap_outside: true
           });
           setIsGoogleLoaded(true);
+          initializedRef.current = true;
+          setDebug("Google OneTap initialized");
         } catch (err) {
-          console.error("Error initializing Google OAuth:", err);
-          setError("Failed to initialize Google OAuth.");
+          logAndSetError("Error initializing Google OAuth", err);
         }
       }
     };
-
     script.onerror = () => {
-      setError("Failed to load Google OAuth script.");
+      logAndSetError("Failed to load Google OAuth script.");
     };
-
     return () => {
       if (document.body.contains(script)) {
         document.body.removeChild(script);
       }
     };
+    // eslint-disable-next-line
   }, []);
 
+  // Handle credential from Google API
   const handleCredentialResponse = (response) => {
     if (response.credential) {
       googleLogin(response.credential);
     }
   };
 
-  const handleGoogleSignIn = () => {
+  // User click handler for Google login button
+  const handleGoogleSignIn = async () => {
     setError(null);
     const now = Date.now();
-    if (now - lastClick.current < 2000) return; // prevent spam clicks
+    if (now - lastClick.current < 2000) return; // throttle/repeat block
     lastClick.current = now;
-
     if (window.google && isGoogleLoaded) {
       try {
+        window.google.accounts.id.cancel(); // Always clean session first
+        // Try FedCM prompt
         window.google.accounts.id.prompt((notification) => {
+          const reason = notification.getNotDisplayedReason?.();
           if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            console.warn("FedCM blocked:", notification.getNotDisplayedReason());
-            // ✅ Fallback to backend redirect if FedCM blocked
-            window.location.href = "https://natterly.onrender.com/auth/google";
+            console.warn("FedCM blocked or skipped:", reason);
+            setDebug(`FedCM prompt not displayed, reason: ${reason}`);
+            // If user canceled or browser suppressed, try popup fallback
+            if (reason === "user_not_signed_in" || reason === "suppressed_by_user") {
+              setTimeout(() => {
+                try {
+                  window.google.accounts.id.cancel();
+                  // Now enforce popup mode (bypass FedCM)
+                  window.google.accounts.id.prompt({
+                    use_fedcm_for_prompt: false
+                  });
+                  setDebug("Retried with use_fedcm_for_prompt: false (popup)");
+                } catch (inner) {
+                  logAndSetError("Popup fallback failed", inner);
+                  window.location.href = "https://natterly.onrender.com/auth/google";
+                }
+              }, 800);
+            } else {
+              // If browser blocks ALL, fallback to redirect
+              setDebug("FedCM fully blocked, using redirect fallback");
+              window.location.href = "https://natterly.onrender.com/auth/google";
+            }
           }
         });
       } catch (err) {
-        console.error("FedCM Error:", err);
-        // ✅ Fallback again if Chrome blocked FedCM
+        logAndSetError("FedCM/popup error", err);
         window.location.href = "https://natterly.onrender.com/auth/google";
       }
+    } else {
+      logAndSetError("Google OneTap not loaded yet");
     }
   };
 
